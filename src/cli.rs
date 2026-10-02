@@ -9,7 +9,6 @@ pub struct NewArgs {
 }
 
 pub fn parse() -> Result<NewArgs, std::io::Error> {
-
     let templates = crate::generator::list_templates()?;
 
     let mut languages = Vec::new();
@@ -28,12 +27,11 @@ pub fn parse() -> Result<NewArgs, std::io::Error> {
     for language in &languages {
         let label = match language {
             Some(name) => name.clone(),
-            None => String::from("Без привязки к языку")
+            None => String::from("Без привязки к языку"),
         };
 
         language_labels.push(label);
     }
-
 
     if templates.is_empty() {
         return Err(io::Error::new(
@@ -70,15 +68,38 @@ pub fn parse() -> Result<NewArgs, std::io::Error> {
         }
     }
 
+    let mut categories = Vec::new();
+    for template in &filtered_templates {
+        categories.push(template.metadata.category.clone());
+    }
+    categories.sort();
+    categories.dedup();
+
+    let category_labels: Vec<&str> = categories
+        .iter()
+        .map(|category| category.as_deref().unwrap_or("Без категории"))
+        .collect();
+
+    let category_index = Select::with_theme(&theme)
+        .with_prompt("Выберите категорию")
+        .items(&category_labels)
+        .default(0)
+        .interact()
+        .map_err(io::Error::other)?;
+
+    filtered_templates.retain(|template| template.metadata.category == categories[category_index]);
+
     let mut names = Vec::new();
 
     for template in &filtered_templates {
-
         if language_index == 0 {
-            let language = template.metadata.language.as_deref()
+            let language = template
+                .metadata
+                .language
+                .as_deref()
                 .unwrap_or("Без привязки к языку");
 
-            let label = format!("{} [{}]", template.metadata.name,language);
+            let label = format!("{} [{}]", template.metadata.name, language);
             names.push(label);
         } else {
             names.push(template.metadata.name.clone());
@@ -86,7 +107,7 @@ pub fn parse() -> Result<NewArgs, std::io::Error> {
     }
 
     let index = Select::with_theme(&theme)
-        .with_prompt("Выберите шаблон")
+        .with_prompt("Выберите вариант шаблона")
         .items(&names)
         .default(0)
         .interact()

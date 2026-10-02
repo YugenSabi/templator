@@ -6,7 +6,8 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct TemplateMetadata {
     pub name: String,
-    pub language: Option<String>
+    pub language: Option<String>,
+    pub category: Option<String>,
 }
 
 pub struct TemplateInfo {
@@ -14,25 +15,31 @@ pub struct TemplateInfo {
     pub metadata: TemplateMetadata,
 }
 
-
 pub(super) static TEMPLATES: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/templates");
 
 pub fn template_names() -> Vec<String> {
     let mut names = Vec::new();
 
-    for dir in TEMPLATES.dirs() {
-        if dir.get_dir(dir.path().join("files")).is_some() {
-            let name = dir.path().to_string_lossy().into_owned();
-            names.push(name);
-        }
-    }
+    collect_template_names(&TEMPLATES, &mut names);
 
     names.sort();
 
     names
 }
 
-pub fn template_metadata(id:&str) -> io::Result<TemplateMetadata> {
+fn collect_template_names(directory: &Dir<'_>, names: &mut Vec<String>) {
+    for dir in directory.dirs() {
+        if dir.get_file(dir.path().join("template.toml")).is_some()
+            && dir.get_dir(dir.path().join("files")).is_some()
+        {
+            names.push(dir.path().to_string_lossy().into_owned());
+        } else {
+            collect_template_names(dir, names);
+        }
+    }
+}
+
+pub fn template_metadata(id: &str) -> io::Result<TemplateMetadata> {
     let path = Path::new(id).join("template.toml");
 
     let file = TEMPLATES.get_file(&path);
@@ -40,11 +47,12 @@ pub fn template_metadata(id:&str) -> io::Result<TemplateMetadata> {
     let file = match file {
         Some(file) => file,
 
-        None => 
+        None => {
             return Err(io::Error::new(
-                io::ErrorKind::NotFound, 
-                "Не найден template.toml"
-            ))
+                io::ErrorKind::NotFound,
+                "Не найден template.toml",
+            ));
+        }
     };
 
     let text = file.contents_utf8();
@@ -52,22 +60,19 @@ pub fn template_metadata(id:&str) -> io::Result<TemplateMetadata> {
     let text = match text {
         Some(text) => text,
 
-       None => 
+        None => {
             return Err(io::Error::new(
-                io::ErrorKind::InvalidData, 
-                "template.toml содержит некорректный UTF-8"
-            ))
+                io::ErrorKind::InvalidData,
+                "template.toml содержит некорректный UTF-8",
+            ));
+        }
     };
 
     let metadata = toml::from_str::<TemplateMetadata>(text);
 
     match metadata {
         Ok(value) => Ok(value),
-        Err(error) => 
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData, 
-                error
-            ))
+        Err(error) => Err(io::Error::new(io::ErrorKind::InvalidData, error)),
     }
 }
 
@@ -76,10 +81,7 @@ pub fn list_templates() -> io::Result<Vec<TemplateInfo>> {
 
     for id in template_names() {
         let metadata = template_metadata(&id)?;
-        templates.push(TemplateInfo {
-            id,
-            metadata,
-        });
+        templates.push(TemplateInfo { id, metadata });
     }
     Ok(templates)
 }
